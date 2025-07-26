@@ -13,6 +13,9 @@ import json # For debugging/pretty-printing JSON
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+# --- NEW IMPORT FOR CORS ---
+from fastapi.middleware.cors import CORSMiddleware
+
 # Load environment variables from .env file (if it exists)
 load_dotenv()
 
@@ -45,6 +48,25 @@ app = FastAPI(
     title="E-commerce Chatbot Backend",
     description="Backend service for conversational AI agent for an e-commerce site.",
     version="1.0.0"
+)
+
+# --- CORS Configuration (NEW ADDITION FOR MILESTONE 9) ---
+# Define origins that are allowed to make requests to your backend.
+# For development, we allow the React app's development server URL.
+# In production, this should be your actual frontend domain(s).
+origins = [
+    "http://localhost:5173",  # React app (Vite default)
+    "http://127.0.0.1:5173",  # React app (alternative localhost IP)
+    # You might add other ports if Vite/React runs on a different port sometimes.
+    # E.g., "http://localhost:3000" if using Create React App
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,          # List of allowed origins
+    allow_credentials=True,         # Allow cookies to be sent with cross-origin requests (if needed later)
+    allow_methods=["*"],            # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],            # Allow all headers in the request
 )
 
 # --- Pydantic Models for Data Validation ---
@@ -114,7 +136,6 @@ def query_database(query_type: str, **kwargs):
 
     if query_type == "top_sold_products":
         try:
-            # Aggregate order_items to find most sold products
             pipeline = [
                 {"$group": {"_id": "$product_id", "sold_count": {"$sum": 1}}},
                 {"$sort": {"sold_count": -1}},
@@ -125,7 +146,7 @@ def query_database(query_type: str, **kwargs):
                     "foreignField": "id",
                     "as": "product_info"
                 }},
-                {"$unwind": "$product_info"}, # Flatten the product_info array
+                {"$unwind": "$product_info"},
                 {"$project": {"_id": 0, "product_name": "$product_info.name", "sold_count": 1, "category": "$product_info.category"}}
             ]
             top_products = list(db.order_items.aggregate(pipeline))
@@ -142,7 +163,6 @@ def query_database(query_type: str, **kwargs):
         if not order_id_str:
             return {"error": "Order ID is required."}
         try:
-            # Try finding by string first, then int for robustness
             order = db.orders.find_one({"order_id": order_id_str})
             if not order:
                 order = db.orders.find_one({"order_id": int(order_id_str)})
@@ -173,7 +193,7 @@ def query_database(query_type: str, **kwargs):
                 product_id = product["id"]
                 available_stock = db.inventory_items.count_documents({
                     "product_id": product_id,
-                    "sold_at": {"$exists": False} # Items not yet sold
+                    "sold_at": {"$exists": False}
                 })
                 return {"product_name": product["name"], "stock": available_stock}
             else:
@@ -195,7 +215,7 @@ def query_database(query_type: str, **kwargs):
                     "brand": product.get("brand"),
                     "retail_price": product.get("retail_price"),
                     "department": product.get("department"),
-                    "sku": product.get("sku") # Added SKU
+                    "sku": product.get("sku")
                 }
             else:
                 return {"error": "Product not found."}
@@ -256,10 +276,9 @@ async def chat_with_bot(request: ChatRequest):
     conversation.messages.append(user_message)
     print(f"DEBUG: User message added to session {session_id}.")
 
-    assistant_response_content = "I'm sorry, I couldn't process your request at this moment." # Default fallback
+    assistant_response_content = "I'm sorry, I couldn't process your request at this moment."
 
     try:
-        # SYSTEM INSTRUCTION: This guides the LLM on its role, capabilities, and expected output.
         system_instruction_content = """
         You are an e-commerce customer support chatbot named 'ShopAssist'. Your primary goal is to provide helpful and accurate information to users about products, orders, and inventory from our e-commerce database.
 
@@ -296,17 +315,11 @@ async def chat_with_bot(request: ChatRequest):
         """
 
         # Prepare chat history for the LLM
-        # The system instruction is provided first to guide the LLM's behavior and output format.
         llm_input_messages = [
             {"role": "user", "parts": [{"text": system_instruction_content}]}
         ]
-        # Append previous messages from the conversation (excluding the initial system instruction from this loop)
         for msg in conversation.messages:
             llm_input_messages.append({"role": msg.role, "parts": [{"text": msg.content}]})
-
-        # Call the LLM (Gemini) to get intent or response
-        # We'll use generate_content for a single turn with the full conversation for context.
-        # We explicitly instruct the LLM to return JSON for tool calls/intent.
 
         # The prompt for structured intent recognition and response generation
         combined_prompt = f"""
@@ -339,8 +352,6 @@ async def chat_with_bot(request: ChatRequest):
             print(f"DEBUG: Parsed LLM structured data: {llm_data}")
         except json.JSONDecodeError:
             print(f"WARNING: LLM did not return valid JSON. Falling back to simple general chat response.")
-            # If LLM doesn't return JSON as requested, treat it as a general chat failure.
-            # You could also try sending it again with a more direct natural language prompt here.
             llm_data = {"intent": "general_chat", "response": "I'm having a bit of trouble understanding your request. Could you please rephrase it?"}
 
         intent = llm_data.get("intent")
@@ -352,7 +363,6 @@ async def chat_with_bot(request: ChatRequest):
             if "error" in db_result:
                 assistant_response_content = f"I encountered an issue retrieving that information: {db_result['error']}"
             else:
-                # Use the LLM again to synthesize a natural language response from DB results
                 synthesis_prompt = f"""
                 The user asked about '{query_type}'.
                 Here is the data retrieved from the database:
@@ -376,9 +386,6 @@ async def chat_with_bot(request: ChatRequest):
 
         elif intent == "general_chat":
             assistant_response_content = llm_data.get("response", "Hello! How can I help you today?")
-            # You could optionally use the LLM to generate a more dynamic general chat response
-            # by providing the full history to start a direct chat session, but for this structured
-            # approach, we rely on the LLM generating it directly in the initial JSON.
 
         else:
             assistant_response_content = "I'm still learning and couldn't process that request. Can you rephrase?"
@@ -388,8 +395,6 @@ async def chat_with_bot(request: ChatRequest):
     except Exception as e:
         print(f"ERROR: An error occurred during LLM interaction or intent processing: {e}")
         assistant_response_content = "I apologize, an unexpected error occurred. Please try again later."
-        # Optionally, re-raise the HTTPException for internal errors if this is critical
-        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal AI error: {e}")
 
 
     # Add assistant message to history
