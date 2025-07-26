@@ -1,0 +1,77 @@
+/* frontend/src/components/ChatHistoryPanel.css */
+
+.chat-history-panel {
+    width: 280px; /* Fixed width for the history panel */
+    background-color: #f0f0f0; /* Light gray background */
+    border-right: 1px solid #e0e0e0; /* Separator from main chat */
+    padding: 20px 15px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto; /* Enable scrolling if many conversations */
+    flex-shrink: 0; /* Prevent the panel from shrinking when content grows */
+}
+
+.chat-history-panel h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #555;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Styles for loading, error, and no history messages */
+.loading-history, .error-history, .no-history-message {
+    text-align: center;
+    color: #888;
+    font-size: 0.9em;
+    padding: 10px;
+}
+
+.error-history {
+    color: #d32f2f; /* Red for errors */
+}
+
+.conversation-list {
+    list-style: none; /* Remove bullet points */
+    padding: 0;
+    margin: 0;
+}
+
+.conversation-item {
+    background-color: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px 15px;
+    margin-bottom: 10px; /* Space between items */
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column; /* Stack date and preview */
+}
+
+.conversation-item:hover {
+    background-color: #e8f5e9; /* Light green on hover */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08); /* Subtle shadow on hover */
+}
+
+/* Style for the currently active/selected conversation */
+.conversation-item.active {
+    background-color: #c8e6c9; /* Darker green for active conversation */
+    border-color: #4CAF50; /* Green border */
+    box-shadow: 0 0 0 2px #4CAF50 inset; /* Green inset border for active */
+}
+
+.conversation-date {
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 5px;
+    align-self: flex-end; /* Align date to the right */
+}
+
+.conversation-preview {
+    font-size: 0.9em;
+    color: #333;
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden; /* Hide overflowed text */
+    text-overflow: ellipsis; /* Add ellipsis for overflowed text */
+}
