@@ -295,7 +295,7 @@ Full interactive API documentation is available at `http://localhost:8000/docs` 
 
 ## Contribution
 
-Feel free to fork this repository, make improvements, and submit pull requests. All contributions are welcome\!
+NIKHIL RAJ
 
 -----
 
