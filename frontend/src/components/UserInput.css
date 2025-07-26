@@ -1,0 +1,56 @@
+/* frontend/src/components/UserInput.css */
+
+.chat-input-area {
+    display: flex; /* Use flexbox to align input and button side-by-side */
+    padding: 15px 20px;
+    border-top: 1px solid #e0e0e0; /* Separator line above input area */
+    background-color: #f8f8f8; /* Light gray background for input area */
+    border-bottom-left-radius: 12px; /* Rounded corners for the bottom */
+    border-bottom-right-radius: 12px;
+}
+
+#user-input {
+    flex-grow: 1; /* Allows the input field to take up most of the available space */
+    padding: 12px 15px;
+    border: 1px solid #ccc; /* Default border */
+    border-radius: 25px; /* Fully rounded input field */
+    font-size: 1em;
+    outline: none; /* Remove default browser outline on focus */
+    transition: border-color 0.2s; /* Smooth transition for border color */
+    background-color: white; /* Ensure consistent white background */
+}
+
+#user-input:focus {
+    border-color: #4CAF50; /* Green border when focused */
+}
+
+#user-input:disabled {
+    background-color: #e0e0e0; /* Gray background when disabled */
+    cursor: not-allowed; /* Change cursor to indicate disabled state */
+}
+
+#send-btn {
+    background-color: #4CAF50; /* Green background for the button */
+    color: white; /* White text */
+    border: none; /* No border */
+    border-radius: 25px; /* Fully rounded button */
+    padding: 12px 20px;
+    margin-left: 10px; /* Space between input and button */
+    cursor: pointer; /* Indicate clickable */
+    font-size: 1em;
+    font-weight: 500;
+    transition: background-color 0.2s ease, transform 0.1s ease; /* Smooth transitions */
+}
+
+#send-btn:hover:not(:disabled) {
+    background-color: #45A049; /* Darker green on hover (when not disabled) */
+}
+
+#send-btn:active:not(:disabled) {
+    transform: translateY(1px); /* Slight press down effect when clicked */
+}
+
+#send-btn:disabled {
+    background-color: #a5d6a7; /* Lighter green when disabled */
+    cursor: not-allowed; /* Change cursor to indicate disabled state */
+}

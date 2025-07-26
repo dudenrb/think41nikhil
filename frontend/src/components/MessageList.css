@@ -1,0 +1,83 @@
+/* frontend/src/components/MessageList.css */
+/* This CSS file contains styles for both MessageList and individual Message components */
+
+.message-list {
+    flex-grow: 1; /* Allows the message list to take up available vertical space */
+    padding: 20px;
+    overflow-y: auto; /* Enables vertical scrolling when content overflows */
+    display: flex;
+    flex-direction: column; /* Stack messages vertically */
+    gap: 10px; /* Space between individual messages */
+    background-color: #e9ebee; /* Light background for the chat area */
+}
+
+/* Style for the initial empty chat message */
+.empty-chat-message {
+    text-align: center;
+    color: #888;
+    margin-top: 50px; /* Push down from the top */
+    font-style: italic;
+}
+
+/* Base style for all message bubbles */
+.message {
+    max-width: 80%; /* Limit message width to prevent very long lines */
+    padding: 10px 15px;
+    border-radius: 18px; /* Rounded corners for chat bubbles */
+    font-size: 0.95em;
+    line-height: 1.4;
+    word-wrap: break-word; /* Ensures long words wrap inside the bubble */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); /* Subtle shadow for depth */
+    display: flex;
+    flex-direction: column; /* Content (p) and timestamp (span) stacked vertically */
+}
+
+.message p {
+    margin: 0; /* Remove default paragraph margins inside messages */
+}
+
+/* Styles specific to user messages */
+.message.user {
+    align-self: flex-end; /* Aligns user messages to the right side of the container */
+    background-color: #DCF8C6; /* Light green background */
+    color: #333;
+    border-bottom-right-radius: 4px; /* Slightly different radius for a 'tail' effect */
+}
+
+/* Styles specific to assistant messages */
+.message.assistant {
+    align-self: flex-start; /* Aligns assistant messages to the left side of the container */
+    background-color: #ffffff; /* White background */
+    color: #333;
+    border: 1px solid #e0e0e0; /* Light gray border */
+    border-bottom-left-radius: 4px; /* Slightly different radius for a 'tail' effect */
+}
+
+/* Style for the loading indicator message */
+.message.assistant.loading {
+    background-color: #f0f0f0;
+    color: #555;
+    font-style: italic;
+    animation: pulse 1.5s infinite ease-in-out; /* Simple pulse animation */
+}
+
+/* Keyframes for the pulse animation */
+@keyframes pulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
+/* Styles for the timestamp within messages */
+.timestamp {
+    display: block; /* Ensures timestamp is on its own line */
+    font-size: 0.75em; /* Smaller font size */
+    color: #888; /* Lighter color */
+    margin-top: 5px; /* Space above timestamp */
+    align-self: flex-end; /* Default align to end for user's timestamp */
+}
+
+/* Specific alignment for assistant message timestamps */
+.message.assistant .timestamp {
+    align-self: flex-start; /* Align to start for assistant's timestamp */
+}

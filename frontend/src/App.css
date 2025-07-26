@@ -1,0 +1,62 @@
+/* frontend/src/App.css */
+/* Styles for the main ChatWindow container */
+.chat-window {
+    background-color: #fff; /* White background for the chat application */
+    border-radius: 12px; /* Rounded corners for the entire window */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); /* Soft shadow for depth */
+    width: 100%;
+    max-width: 450px; /* Max width for a typical chat interface. Will increase for M8. */
+    height: 80vh; /* Make the chat window take 80% of the viewport height */
+    display: flex;
+    flex-direction: column; /* Stack header, content, and input vertically */
+    overflow: hidden; /* Ensures child elements don't overflow rounded corners */
+    border: 1px solid #e0e0e0; /* Light border */
+}
+
+/* Styles for the chat header */
+.chat-header {
+    background-color: #4CAF50; /* Green header background */
+    color: white; /* White text color */
+    padding: 15px 20px;
+    text-align: center;
+    font-size: 1.2em;
+    border-bottom: 1px solid #388E3C; /* Darker green border at the bottom */
+    border-top-left-radius: 12px; /* Match container's top rounded corners */
+    border-top-right-radius: 12px;
+    display: flex; /* Use flexbox to align title and button */
+    justify-content: space-between; /* Space out items */
+    align-items: center; /* Vertically align items */
+}
+
+.chat-header h1 {
+    margin: 0;
+    font-size: 1.5em;
+    font-weight: 500;
+    flex-grow: 1; /* Allow the title to take available horizontal space */
+}
+
+/* Styling for the History Toggle Button (Milestone 8 placeholder) */
+.history-toggle-btn {
+    background-color: #388E3C; /* Darker green */
+    color: white;
+    border: none;
+    border-radius: 20px; /* Rounded button */
+    padding: 8px 15px;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.history-toggle-btn:hover {
+    background-color: #2E7D32; /* Even darker green on hover */
+}
+
+/* Main content area where messages and (later) history panel reside */
+.chat-content {
+    flex-grow: 1; /* Allows this area to expand and take available vertical space */
+    display: flex; /* Use flexbox to arrange MessageList and ChatHistoryPanel side-by-side (in M8) */
+    overflow: hidden; /* Hide scrollbars of children if they overflow (like MessageList) */
+}
+
+/* UserInput styling is handled in UserInput.css */
+/* MessageList styling is handled in MessageList.css */

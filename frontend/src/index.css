@@ -1,0 +1,43 @@
+/* frontend/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+/* Basic reset and font settings */
+:root {
+  font-family: 'Roboto', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: #333; /* Dark gray for text */
+  background-color: #f0f2f5; /* Light gray for body background */
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Flexbox setup to center the chat window vertically and horizontally */
+body {
+  margin: 0;
+  display: flex;
+  place-items: center; /* Centers items for both justify and align in a single property */
+  min-height: 100vh; /* Ensure body takes full viewport height */
+  justify-content: center; /* Center horizontally */
+  align-items: center; /* Center vertically */
+  overflow: hidden; /* Prevent body scrollbar if content overflows */
+}
+
+/* Basic styling for common HTML elements */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0; /* Remove default margins for headings */
+}
+
+button {
+  cursor: pointer; /* Indicate clickable elements */
+}
+
+input {
+  border: none;
+  outline: none; /* Remove default input border and outline on focus */
+}
