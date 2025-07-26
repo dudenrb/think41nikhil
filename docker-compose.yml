@@ -1,0 +1,62 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # --- MongoDB Service ---
+  mongodb:
+    image: mongo:latest # Use the official MongoDB image
+    container_name: mongodb_container
+    ports:
+      - "27017:27017" # Map host port 27017 to container port 27017
+    volumes:
+      - mongo_data:/data/db # Persist data to a named volume
+    restart: unless-stopped # Always restart unless explicitly stopped
+    networks:
+      - chatbot_network
+
+  # --- Backend Service ---
+  backend:
+    build: ./backend # Build from the Dockerfile in the ./backend directory
+    container_name: backend_container
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    environment:
+      # Pass the Gemini API key to the backend container
+      # For Canvas environment, it's often injected, but this is how you'd normally pass it.
+      # For production, consider Docker secrets or environment variables managed by deployment tools.
+      GEMINI_API_KEY: "${GEMINI_API_KEY}" # Read from .env in project root if available
+    depends_on:
+      - mongodb # Ensure MongoDB starts before the backend
+    networks:
+      - chatbot_network
+    volumes:
+      # Mount the backend code for live reloading during development (optional)
+      # Comment this out for production builds to avoid overwriting container code
+      - ./backend:/app:rw
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] # --reload for dev
+
+  # --- Frontend Service ---
+  frontend:
+    build: ./frontend # Build from the Dockerfile in the ./frontend directory
+    container_name: frontend_container
+    ports:
+      - "5173:80" # Map host port 5173 (React dev default) to container port 80 (Nginx default)
+    depends_on:
+      - backend # Ensure backend starts before frontend (optional but good practice)
+    networks:
+      - chatbot_network
+    # If using Vite's dev server directly (instead of Nginx for serving built files):
+    # command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    # volumes:
+    #   - ./frontend:/app:rw
+    #   - /app/node_modules # Prevent host node_modules from overwriting container's
+    #   - /app/dist # Exclude build output from host if you build inside container and mount code
+
+volumes:
+  # Define named volume for MongoDB data persistence
+  mongo_data:
+
+networks:
+  # Define a custom bridge network for services to communicate
+  chatbot_network:
+    driver: bridge
