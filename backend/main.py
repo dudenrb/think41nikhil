@@ -1,40 +1,44 @@
 # backend/main.py
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field # Used for data validation and schema definition
+from pydantic import BaseModel, Field
 from pymongo import MongoClient
-from bson import ObjectId # Required for handling MongoDB's default _id field
+from bson import ObjectId
 from datetime import datetime
 from typing import List, Optional
-import uuid # For generating unique session IDs
+import uuid
 import os
-import json # For debugging/pretty-printing JSON (e.g., sample documents)
+import json # For debugging/pretty-printing JSON
 
-# For loading environment variables (like API keys in Milestone 5)
+# LLM Integration imports
+import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables from .env file (if it exists)
 load_dotenv()
 
 # --- MongoDB Configuration ---
-# Default MongoDB URI for a local instance.
-# Ensure your MongoDB server is running on localhost:27017
 MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME = "ecommerce_chatbot_db"       # The database name where you loaded your CSV data
+DB_NAME = "ecommerce_chatbot_db"
 
 # --- Initialize MongoDB client ---
-# Global variable to hold the database connection object
 db = None
 try:
     client = MongoClient(MONGO_URI)
     db = client[DB_NAME]
-    # Ping the database to ensure a successful connection
-    client.admin.command('ping')
+    client.admin.command('ping') # Test connection
     print("Successfully connected to MongoDB!")
 except Exception as e:
     print(f"ERROR: Could not connect to MongoDB. Please ensure MongoDB server is running on {MONGO_URI}: {e}")
-    # In a production app, you might want to log this error and gracefully exit or retry.
-    # For now, `db` will remain None, and API calls will raise 503.
-    # sys.exit(1) # Uncomment this in production to prevent app from starting if DB is down
+    # In a real application, you might exit here or implement a retry mechanism.
+
+# --- Gemini API Configuration ---
+# The API key for Gemini. For this Canvas environment, leaving it empty
+# allows the system to inject it. In a real setup, load from .env.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# Configure the Gemini API client
+genai.configure(api_key=GEMINI_API_KEY)
+llm_model = genai.GenerativeModel('gemini-2.0-flash') # Using gemini-2.0-flash for efficiency
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
@@ -43,50 +47,37 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# --- Pydantic Models for Data Validation (Request/Response Schemas) ---
+# --- Pydantic Models for Data Validation ---
 
-# Custom type for MongoDB's ObjectId to work seamlessly with Pydantic
-# This helps Pydantic validate and serialize MongoDB's _id field.
 class PyObjectId(ObjectId):
     @classmethod
     def __get_validators__(cls):
         yield cls.validate
-
     @classmethod
     def validate(cls, v):
         if not ObjectId.is_valid(v):
             raise ValueError("Invalid ObjectId")
         return ObjectId(v)
-
     @classmethod
     def __modify_schema__(cls, field_schema: dict):
-        # Allow Pydantic to represent ObjectId as a string in OpenAPI schema (Swagger UI)
         field_schema.update(type="string")
 
-# Model for a single message within a conversation (user or assistant)
 class Message(BaseModel):
     role: str = Field(..., description="Role of the sender (e.g., 'user', 'assistant')")
     content: str = Field(..., description="The textual content of the message")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="UTC timestamp of when the message was created")
 
-# Model for a full conversation session document stored in MongoDB
-# This directly maps to the 'conversations' collection schema.
 class Conversation(BaseModel):
-    # _id is MongoDB's unique ID, aliased to 'id' for Pydantic/API use
     id: Optional[PyObjectId] = Field(alias="_id", default=None, description="Unique MongoDB document ID for the conversation session")
-    user_id: str = Field(..., description="Identifier for the user who initiated or is part of this conversation")
+    user_id: str = Field(..., description="Identifier for the user")
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique UUID for this specific conversation session")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="UTC timestamp when this conversation session was created")
     messages: List[Message] = Field(default_factory=list, description="Ordered list of messages in this conversation session")
 
     class Config:
-        # This allows Pydantic to populate fields by their alias (_id -> id)
         allow_population_by_field_name = True
-        # Required for PyObjectId to be treated as a valid type
         arbitrary_types_allowed = True
-        # Serializer for ObjectId to string when returning JSON
         json_encoders = {ObjectId: str}
-        # Example schema for documentation (Swagger UI)
         schema_extra = {
             "example": {
                 "user_id": "test_user_456",
@@ -99,65 +90,120 @@ class Conversation(BaseModel):
             }
         }
 
-# Model for the incoming chat request from the frontend
 class ChatRequest(BaseModel):
     user_id: str = Field(..., description="The ID of the user sending the message")
     message: str = Field(..., description="The user's message text")
     session_id: Optional[str] = Field(None, description="Optional: The ID of an existing conversation session to continue")
 
-# Model for the outgoing chat response to the frontend
 class ChatResponse(BaseModel):
     session_id: str = Field(..., description="The session ID of the conversation (new or existing)")
     assistant_response: str = Field(..., description="The AI's response to the user's message")
     conversation_history: List[Message] = Field(..., description="The full updated conversation history for the session")
 
-# --- Helper function to query the database (Placeholder for Milestone 5) ---
+# --- Helper function to query the database ---
 def query_database(query_type: str, **kwargs):
     """
-    A placeholder function to simulate querying the e-commerce database.
-    In a real scenario, this would involve complex queries to MongoDB
-    based on the intent extracted from the LLM.
-
-    This function will be expanded in Milestone 5.
+    Queries the e-commerce MongoDB database based on the intent and parameters
+    identified by the LLM.
     """
-    # Example placeholder logic:
+    if db is None:
+        print("ERROR: Database connection not available for query_database.")
+        return {"error": "Database not connected."}
+
+    print(f"DEBUG: Executing database query type: {query_type} with params: {kwargs}")
+
     if query_type == "top_sold_products":
-        # In a real scenario, you'd aggregate order_items or inventory_items
-        # to find top 5 actual sold products.
-        # For now, let's just return 5 products based on arbitrary sorting from 'products' collection
-        if db:
-            products = list(db.products.find().sort("retail_price", -1).limit(5)) # Simple example
-            return {"products": products}
-        return {"error": "Database not connected for top_sold_products."}
+        try:
+            # Aggregate order_items to find most sold products
+            pipeline = [
+                {"$group": {"_id": "$product_id", "sold_count": {"$sum": 1}}},
+                {"$sort": {"sold_count": -1}},
+                {"$limit": 5},
+                {"$lookup": {
+                    "from": "products",
+                    "localField": "_id",
+                    "foreignField": "id",
+                    "as": "product_info"
+                }},
+                {"$unwind": "$product_info"}, # Flatten the product_info array
+                {"$project": {"_id": 0, "product_name": "$product_info.name", "sold_count": 1, "category": "$product_info.category"}}
+            ]
+            top_products = list(db.order_items.aggregate(pipeline))
+            if top_products:
+                return {"products": top_products}
+            else:
+                return {"products": []}
+        except Exception as e:
+            print(f"Error querying top sold products: {e}")
+            return {"error": "Failed to retrieve top sold products."}
+
     elif query_type == "order_status":
-        order_id = kwargs.get("order_id")
-        if order_id and db:
-            try:
-                order = db.orders.find_one({"order_id": int(order_id)}) # Assuming order_id is integer in DB
-                if order:
-                    return {"order_status": order.get("status"), "order_id": order_id}
-                else:
-                    return {"order_status": "not found", "order_id": order_id}
-            except ValueError:
-                return {"error": "Invalid order ID format."}
-        return {"error": "Order ID not provided or database not connected."}
+        order_id_str = kwargs.get("order_id")
+        if not order_id_str:
+            return {"error": "Order ID is required."}
+        try:
+            # Try finding by string first, then int for robustness
+            order = db.orders.find_one({"order_id": order_id_str})
+            if not order:
+                order = db.orders.find_one({"order_id": int(order_id_str)})
+
+            if order:
+                return {
+                    "order_id": order.get("order_id"),
+                    "status": order.get("status"),
+                    "created_at": order.get("created_at"),
+                    "shipped_at": order.get("shipped_at"),
+                    "delivered_at": order.get("delivered_at")
+                }
+            else:
+                return {"error": "Order not found."}
+        except (ValueError, TypeError):
+            return {"error": "Invalid order ID format. Please provide a numeric ID."}
+        except Exception as e:
+            print(f"Error querying order status: {e}")
+            return {"error": "Failed to retrieve order status."}
+
     elif query_type == "product_stock":
         product_name = kwargs.get("product_name")
-        if product_name and db:
-            # Find product by name (case-insensitive search)
+        if not product_name:
+            return {"error": "Product name is required."}
+        try:
             product = db.products.find_one({"name": {"$regex": product_name, "$options": "i"}})
             if product:
                 product_id = product["id"]
-                # Count available inventory items for this product
                 available_stock = db.inventory_items.count_documents({
                     "product_id": product_id,
                     "sold_at": {"$exists": False} # Items not yet sold
                 })
                 return {"product_name": product["name"], "stock": available_stock}
             else:
-                return {"product_name": product_name, "stock": "not found"}
-        return {"error": "Product name not provided or database not connected."}
-    return {"error": "Unknown query type or function not implemented yet."}
+                return {"error": "Product not found."}
+        except Exception as e:
+            print(f"Error querying product stock: {e}")
+            return {"error": "Failed to retrieve product stock."}
+
+    elif query_type == "product_details":
+        product_name = kwargs.get("product_name")
+        if not product_name:
+            return {"error": "Product name is required."}
+        try:
+            product = db.products.find_one({"name": {"$regex": product_name, "$options": "i"}})
+            if product:
+                return {
+                    "name": product.get("name"),
+                    "category": product.get("category"),
+                    "brand": product.get("brand"),
+                    "retail_price": product.get("retail_price"),
+                    "department": product.get("department"),
+                    "sku": product.get("sku") # Added SKU
+                }
+            else:
+                return {"error": "Product not found."}
+        except Exception as e:
+            print(f"Error querying product details: {e}")
+            return {"error": "Failed to retrieve product details."}
+
+    return {"error": "Unknown query type or insufficient parameters."}
 
 
 # --- API Endpoints ---
@@ -173,14 +219,9 @@ async def root():
 async def chat_with_bot(request: ChatRequest):
     """
     Handles a user's chat message, manages conversation history,
-    and returns a placeholder AI response.
-
-    This endpoint orchestrates finding/creating a session,
-    adding user/assistant messages, and persisting to MongoDB.
-    The actual AI response generation (LLM integration) will be
-    fully implemented in Milestone 5.
+    integrates with the LLM for intelligence, and formulates responses
+    based on database queries and conversational context.
     """
-    # Ensure database connection is established
     if db is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database not connected. Please check server logs.")
 
@@ -191,61 +232,185 @@ async def chat_with_bot(request: ChatRequest):
     conversations_collection = db.conversations
 
     # 1. Find or create a conversation session
-    # If a session_id is provided, try to find it.
-    # If not found (or not provided), create a new session.
     conversation_doc = None
     if session_id:
         conversation_doc = conversations_collection.find_one({"user_id": user_id, "session_id": session_id})
         if not conversation_doc:
-            # If session_id was provided but doesn't exist for this user, treat as new.
             print(f"INFO: Provided session_id '{session_id}' not found for user '{user_id}'. Starting a new session.")
-            session_id = str(uuid.uuid4()) # Generate a new UUID
+            session_id = str(uuid.uuid4())
             new_conversation = Conversation(user_id=user_id, session_id=session_id)
-            conversation_doc = new_conversation.dict(by_alias=True, exclude_none=True) # Convert Pydantic model to dict for MongoDB
+            conversation_doc = new_conversation.dict(by_alias=True, exclude_none=True)
             conversations_collection.insert_one(conversation_doc)
             print(f"INFO: Created new conversation session: {session_id}")
     else:
-        # No session_id provided, so always start a new session.
         session_id = str(uuid.uuid4())
         new_conversation = Conversation(user_id=user_id, session_id=session_id)
-        conversation_doc = new_conversation.dict(by_alias=True, exclude_none=True) # Convert Pydantic model to dict for MongoDB
+        conversation_doc = new_conversation.dict(by_alias=True, exclude_none=True)
         conversations_collection.insert_one(conversation_doc)
         print(f"INFO: Created new conversation session: {session_id}")
 
-    # Convert the MongoDB document (dict) to our Pydantic Conversation model
-    # This allows us to use .append() on the messages list easily and leverage Pydantic's validation.
     conversation = Conversation(**conversation_doc)
 
-    # 2. Add the user's message to the conversation history
+    # Add the user's message to the conversation history
     user_message = Message(role="user", content=user_message_content)
     conversation.messages.append(user_message)
     print(f"DEBUG: User message added to session {session_id}.")
 
-    # 3. Generate a placeholder AI response (This will be replaced by LLM in Milestone 5)
-    # For now, it simply acknowledges the user's input.
-    assistant_response_content = f"Acknowledged: '{user_message_content}'. (Placeholder AI response for session {session_id})."
+    assistant_response_content = "I'm sorry, I couldn't process your request at this moment." # Default fallback
+
+    try:
+        # SYSTEM INSTRUCTION: This guides the LLM on its role, capabilities, and expected output.
+        system_instruction_content = """
+        You are an e-commerce customer support chatbot named 'ShopAssist'. Your primary goal is to provide helpful and accurate information to users about products, orders, and inventory from our e-commerce database.
+
+        You have access to the following data through internal 'tools' (database queries):
+        - `top_sold_products`: To get a list of the top 5 most sold products. No parameters needed.
+        - `order_status` (requires 'order_id'): To check the status of a specific order.
+        - `product_stock` (requires 'product_name'): To find out how many units of a specific product are in stock.
+        - `product_details` (requires 'product_name'): To get general information about a specific product (category, brand, price, department, SKU).
+
+        Your response strategy:
+        1.  **Identify User Intent and Parameters:** Based on the user's message, determine if they are asking for a specific piece of information that can be retrieved from the database. Extract any necessary parameters (like product name or order ID).
+        2.  **Request Clarification:** If you detect an intent to query data but lack a crucial parameter (e.g., "What's the order status?" without an order ID), respond naturally by asking the user for the missing information.
+        3.  **Formulate Database Query (JSON Output):** If you can identify a clear intent and have all required parameters for a database query, you must respond with a **JSON object** indicating the `query_type` and its `parameters`.
+            * Example for "What are the top 5 most sold products?":
+                ```json
+                {"intent": "query_data", "query_type": "top_sold_products", "parameters": {}}
+                ```
+            * Example for "What is the status of order 12345?":
+                ```json
+                {"intent": "query_data", "query_type": "order_status", "parameters": {"order_id": "12345"}}
+                ```
+            * Example for "How many Classic T-Shirts are left in stock?":
+                ```json
+                {"intent": "query_data", "query_type": "product_stock", "parameters": {"product_name": "Classic T-Shirt"}}
+                ```
+            * Example for "Tell me about the Super comfortable jeans":
+                ```json
+                {"intent": "query_data", "query_type": "product_details", "parameters": {"product_name": "Super comfortable jeans"}}
+                ```
+        4.  **Natural Language Response:** For general conversational questions (e.g., "Hello", "How are you?"), or if you've performed a database query, synthesize the information you've gathered into a helpful, concise, and friendly natural language response. Do NOT include technical details of the query in the user-facing response.
+        5.  **Maintain Context:** Use the conversation history to understand follow-up questions.
+
+        Always try to be helpful and direct. If you cannot fulfill a request, explain why politely.
+        """
+
+        # Prepare chat history for the LLM
+        # The system instruction is provided first to guide the LLM's behavior and output format.
+        llm_input_messages = [
+            {"role": "user", "parts": [{"text": system_instruction_content}]}
+        ]
+        # Append previous messages from the conversation (excluding the initial system instruction from this loop)
+        for msg in conversation.messages:
+            llm_input_messages.append({"role": msg.role, "parts": [{"text": msg.content}]})
+
+        # Call the LLM (Gemini) to get intent or response
+        # We'll use generate_content for a single turn with the full conversation for context.
+        # We explicitly instruct the LLM to return JSON for tool calls/intent.
+
+        # The prompt for structured intent recognition and response generation
+        combined_prompt = f"""
+        {system_instruction_content}
+
+        Based on the conversation history below and the user's latest message, generate the appropriate response.
+
+        Conversation History (User and Assistant messages):
+        {json.dumps([{"role": msg.role, "content": msg.content} for msg in conversation.messages], indent=2)}
+
+        User's latest message: "{user_message_content}"
+
+        Your final response should be ONLY a JSON object if it's a tool call (query_data or clarify), otherwise, if it's a general conversation, the JSON should specify "general_chat" and the "response".
+        """
+
+        print(f"DEBUG: Sending combined prompt to LLM for intent/response:\n{combined_prompt}")
+
+        llm_response_raw = llm_model.generate_content(
+            combined_prompt,
+            generation_config={
+                "response_mime_type": "application/json"
+            }
+        )
+        llm_output_text = llm_response_raw.text
+        print(f"DEBUG: LLM raw response: {llm_output_text}")
+
+        llm_data = {}
+        try:
+            llm_data = json.loads(llm_output_text)
+            print(f"DEBUG: Parsed LLM structured data: {llm_data}")
+        except json.JSONDecodeError:
+            print(f"WARNING: LLM did not return valid JSON. Falling back to simple general chat response.")
+            # If LLM doesn't return JSON as requested, treat it as a general chat failure.
+            # You could also try sending it again with a more direct natural language prompt here.
+            llm_data = {"intent": "general_chat", "response": "I'm having a bit of trouble understanding your request. Could you please rephrase it?"}
+
+        intent = llm_data.get("intent")
+        query_type = llm_data.get("query_type")
+        parameters = llm_data.get("parameters", {})
+
+        if intent == "query_data":
+            db_result = query_database(query_type, **parameters)
+            if "error" in db_result:
+                assistant_response_content = f"I encountered an issue retrieving that information: {db_result['error']}"
+            else:
+                # Use the LLM again to synthesize a natural language response from DB results
+                synthesis_prompt = f"""
+                The user asked about '{query_type}'.
+                Here is the data retrieved from the database:
+                {json.dumps(db_result, indent=2)}
+
+                Based on this data, formulate a helpful, concise, and friendly answer for the user.
+                Do not include technical details of the query. If the data is insufficient to fully answer, state that politely.
+
+                Examples:
+                - Products: "The top 5 most sold products are: Running Shoes, Classic T-Shirt, etc."
+                - Order Status: "Order ID {db_result.get('order_id')} is currently in {db_result.get('status')} status. It was created on {db_result.get('created_at')}."
+                - Product Stock: "There are {db_result.get('stock')} units of {db_result.get('product_name')} left in stock."
+                - Product Details: "The {db_result.get('name')} is a {db_result.get('brand')} brand product in the {db_result.get('category')} category, priced at ${db_result.get('retail_price')}."
+                """
+                print(f"DEBUG: Sending synthesis prompt to LLM:\n{synthesis_prompt}")
+                synthesis_response = llm_model.generate_content(synthesis_prompt)
+                assistant_response_content = synthesis_response.text
+
+        elif intent == "clarify":
+            assistant_response_content = llm_data.get("clarification_needed", "Could you please provide more details?")
+
+        elif intent == "general_chat":
+            assistant_response_content = llm_data.get("response", "Hello! How can I help you today?")
+            # You could optionally use the LLM to generate a more dynamic general chat response
+            # by providing the full history to start a direct chat session, but for this structured
+            # approach, we rely on the LLM generating it directly in the initial JSON.
+
+        else:
+            assistant_response_content = "I'm still learning and couldn't process that request. Can you rephrase?"
+            print(f"WARNING: Unexpected intent received from LLM: {intent}. Full LLM data: {llm_data}")
+
+
+    except Exception as e:
+        print(f"ERROR: An error occurred during LLM interaction or intent processing: {e}")
+        assistant_response_content = "I apologize, an unexpected error occurred. Please try again later."
+        # Optionally, re-raise the HTTPException for internal errors if this is critical
+        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal AI error: {e}")
+
+
+    # Add assistant message to history
     assistant_message = Message(role="assistant", content=assistant_response_content)
     conversation.messages.append(assistant_message)
-    print(f"DEBUG: Placeholder assistant response generated for session {session_id}.")
+    print(f"DEBUG: Assistant response generated for session {session_id}.")
 
-    # 4. Update the conversation document in MongoDB
+    # Update the conversation document in MongoDB
     try:
-        # We use $set to update the entire 'messages' array in the database.
-        # Ensure that Pydantic Message objects are converted back to dictionaries for MongoDB.
         update_result = conversations_collection.update_one(
-            {"_id": conversation.id}, # Query by the MongoDB _id (aliased as 'id' in Pydantic)
-            {"$set": {"messages": [msg.dict() for msg in conversation.messages]}} # Convert Pydantic Message objects back to dicts
+            {"_id": conversation.id},
+            {"$set": {"messages": [msg.dict() for msg in conversation.messages]}}
         )
         if update_result.matched_count == 0:
-            # This should ideally not happen if conversation_doc was found/inserted successfully
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation document not found for update (internal error).")
-        print(f"INFO: Updated conversation session {session_id} for user {user_id} in MongoDB.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation document not found for update after AI processing.")
+        print(f"INFO: Updated conversation session {session_id} for user {user_id} in MongoDB after AI response.")
     except Exception as e:
-        print(f"ERROR: Failed to update conversation in database: {e}")
-        # Re-raise as HTTPException to send an appropriate error response to the client
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save conversation history: {e}")
+        print(f"ERROR: Failed to update conversation in database after AI processing: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save conversation history after AI response: {e}")
 
-    # 5. Return the response to the frontend
+    # Return the response to the frontend
     return ChatResponse(
         session_id=conversation.session_id,
         assistant_response=assistant_response_content,
@@ -261,14 +426,11 @@ async def get_user_conversations(user_id: str):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database not connected. Please check server logs.")
 
     conversations_collection = db.conversations
-    # Find all documents for the user, sorted by 'created_at' in descending order (-1 for descending)
     user_conversations_docs = list(conversations_collection.find({"user_id": user_id}).sort("created_at", -1))
 
     if not user_conversations_docs:
-        # If no conversations found for the user, return an empty list
         return []
 
-    # Convert MongoDB documents (dictionaries) to Pydantic Conversation models for proper response serialization
     return [Conversation(**doc) for doc in user_conversations_docs]
 
 @app.get("/api/conversation/{session_id}", response_model=Conversation)
@@ -283,20 +445,6 @@ async def get_conversation_by_session_id(session_id: str):
     conversation_doc = conversations_collection.find_one({"session_id": session_id})
 
     if not conversation_doc:
-        # If a conversation with the given session_id is not found, return 404 Not Found
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Conversation session '{session_id}' not found.")
 
-    # Convert the found MongoDB document to a Pydantic Conversation model
     return Conversation(**conversation_doc)
-
-
-# --- How to Run This Application (for local development) ---
-# 1. Ensure you have installed the required Python packages:
-#    pip install fastapi uvicorn pymongo python-dotenv pydantic
-# 2. Make sure your local MongoDB server is running (e.g., via `mongod` command).
-# 3. Ensure your 'ecommerce_chatbot_db' is populated with data from load_data.py.
-# 4. Open your terminal, navigate to your 'backend' directory.
-# 5. Run the command: uvicorn main:app --reload
-#
-# Access the interactive API documentation (Swagger UI) at: http://127.0.0.1:8000/docs
-# Access the API at its root: http://127.00.1:8000
