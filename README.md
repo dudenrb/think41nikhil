@@ -1,12 +1,4 @@
-Okay, here is a complete and properly formatted `README.md` file for your E-commerce Customer Support Chatbot project. This `README.md` is designed to be comprehensive, providing all the necessary information for setup, running, and understanding your application.
 
-It incorporates all the details from the previous milestones, including Dockerization, and follows standard `README.md` best practices.
-
------
-
-**`README.md`** (Create this file in your project's root directory: `C:\Users\Hp\think41nikhil\README.md`)
-
-```markdown
 # E-commerce Customer Support Chatbot
 
 This project implements a full-stack customer support chatbot for a fictitious e-commerce clothing site. It leverages a Python FastAPI backend for AI logic and database interaction, a React frontend for the user interface, and MongoDB as its data store. The entire application stack is containerized using Docker and orchestrated with Docker Compose for ease of deployment and consistency across environments.
